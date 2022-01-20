@@ -1,0 +1,2 @@
+model_checkpoint_path: "/AudioProject/VAD/model/saver_VAD/220119/best_saver_VAD"
+all_model_checkpoint_paths: "/AudioProject/VAD/model/saver_VAD/220119/best_saver_VAD"
