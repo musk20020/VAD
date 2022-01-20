@@ -20,6 +20,7 @@ tqdm.monitor_interval = 0
 from utils import np_REG_batch, search_wav, copy_file, np_batch, get_embedding, get_dist_table, _gen_audio
 from sklearn.utils import shuffle
 import tensorflow_utils as tfu
+import wandb
 
 #eps = np.finfo(np.float32).epsilon()
 
@@ -45,6 +46,17 @@ class REG:
 
     def build(self, reuse):
 
+        wandb.init(project="VAD", entity="musktang")
+        wandb.config = {
+            "batch_size" : self.config.batch_size,
+            "filter_h" : 5,
+            "filter_w" : 3,
+            "mel_freq_num" : self.config.mel_freq_num,
+            "l1_output_num" : 40,
+            "l2_output_num": 20,
+            "l3_output_num": 10,
+        }
+
         self.name = 'VAD'
         input_dimension = 48  # RNN input
         output_dimension = 1
@@ -63,15 +75,18 @@ class REG:
                     tf.float32, shape=[None, self.config.stoi_correlation_time, 1], name='ground_truth')
 
             with tf.variable_scope('featureExtractor', reuse=tf.AUTO_REUSE):
-                layer_1 = tfu._add_conv_layer(self.x_noisy_norm, layer_num='1', filter_h=5, filter_w=3, input_c=1,
-                                               output_c=40, dilation=[1, 1, 1, 1], activate=tf.nn.leaky_relu,
-                                               padding='SAME', trainable=True)  # [N, 126, t-2, 512]
-                layer_2 = tfu._add_conv_layer(layer_1, layer_num='2', filter_h=5, filter_w=3, input_c=40, output_c=20,
-                                               dilation=[1, 1, 1, 1], activate=tf.nn.leaky_relu, padding='SAME',
-                                               trainable=True)  # [N, 62, t-4, 512]
-                layer_3 = tfu._add_conv_layer(layer_2, layer_num='3', filter_h=5, filter_w=1, input_c=20, output_c=10,
-                                               dilation=[1, 2, 1, 1], activate=tf.nn.leaky_relu, padding='SAME',
-                                               trainable=True)  # [N, 124, t-4, 128]
+                layer_1 = tfu._add_conv_layer(self.x_noisy_norm, layer_num='1', filter_h=wandb.config.get("filter_h"),
+                                              filter_w=wandb.config.get("filter_w"), input_c=1,
+                                               output_c=wandb.config.get("l1_output_num"), dilation=[1, 1, 1, 1],
+                                              activate=tf.nn.leaky_relu, padding='SAME', trainable=True)  # [N, 126, t-2, 512]
+                layer_2 = tfu._add_conv_layer(layer_1, layer_num='2', filter_h=wandb.config.get("filter_h"),
+                                              filter_w=wandb.config.get("filter_w"), input_c=wandb.config.get("l1_output_num"),
+                                              output_c=wandb.config.get("l2_output_num"), dilation=[1, 1, 1, 1],
+                                              activate=tf.nn.leaky_relu, padding='SAME', trainable=True)  # [N, 62, t-4, 512]
+                layer_3 = tfu._add_conv_layer(layer_2, layer_num='3', filter_h=wandb.config.get("filter_h"),
+                                              filter_w=1, input_c=wandb.config.get("l2_output_num"),
+                                              output_c=wandb.config.get("l3_output_num"), dilation=[1, 1, 1, 1],
+                                              activate=tf.nn.leaky_relu, padding='SAME', trainable=True)  # [N, 124, t-4, 128]
                 reshape = tf.reshape(tf.transpose(layer_3, perm=[0, 2, 3, 1]),
                                      [-1, self.config.stoi_correlation_time, 10 * input_dimension])
                 output = tfu._add_3dfc_layer(reshape, 10 * input_dimension, 1,
@@ -82,6 +97,8 @@ class REG:
                 self.loss_mse_denoiser = tf.losses.mean_squared_error(output, self.ground_truth)
                 self.total_loss = self.loss_mse_denoiser
                 tf.summary.scalar('Loss mse', self.total_loss)
+                # wandb.log({"Loss mse": self.loss_mse_denoiser})
+
 
             with tf.name_scope("exp_learning_rate"):
                 self.global_step = tf.Variable(0, trainable=False)
@@ -165,10 +182,12 @@ class REG:
                     
                     step += 1
                     writer.add_summary( summary, step )
+                    wandb.log({"train mse loss": loss_reg})
                 else:
                     loss_reg, summary = sess.run(
                         [self.total_loss, merge_op
                          ], feed_dict=feed_dict )
+                    wandb.log({"dev mse loss": loss_reg})
                 
                 loss_reg_tmp += loss_reg
                 count += 1
@@ -192,12 +211,12 @@ class REG:
         best_dev_loss = 10.
 
         data_list = [tag for tag in iglob( self.config.voice_path )]
-        mozilla_data_list = [tag for tag in iglob(self.config.mozilla_train_path)]
-        librispeech_data_list = [tag for tag in iglob(self.config.librispeech_train_path)]
-        vocalset_data_list = [tag for tag in iglob(self.config.vocalset_train_path)]
-        data_list.extend(mozilla_data_list)
-        data_list.extend(librispeech_data_list)
-        data_list.extend(vocalset_data_list)
+        # mozilla_data_list = [tag for tag in iglob(self.config.mozilla_train_path)]
+        # librispeech_data_list = [tag for tag in iglob(self.config.librispeech_train_path)]
+        # vocalset_data_list = [tag for tag in iglob(self.config.vocalset_train_path)]
+        # data_list.extend(mozilla_data_list)
+        # data_list.extend(librispeech_data_list)
+        # data_list.extend(vocalset_data_list)
 
         noise_list = [tag for tag in iglob( self.config.noise_path )]
         # audioset_noise_list = [tag for tag in iglob(self.config.audioset_path)]
@@ -207,12 +226,12 @@ class REG:
 
 
         dev_data_list = [tag for tag in iglob( self.config.dev_voice_path )]
-        mozilla_data_list = [tag for tag in iglob(self.config.mozilla_dev_path)]
-        librispeech_data_list = [tag for tag in iglob(self.config.librispeech_dev_path)]
-        vocalset_data_list = [tag for tag in iglob(self.config.vocalset_dev_path)]
-        dev_data_list.extend(mozilla_data_list)
-        dev_data_list.extend(librispeech_data_list)
-        dev_data_list.extend(vocalset_data_list)
+        # mozilla_data_list = [tag for tag in iglob(self.config.mozilla_dev_path)]
+        # librispeech_data_list = [tag for tag in iglob(self.config.librispeech_dev_path)]
+        # vocalset_data_list = [tag for tag in iglob(self.config.vocalset_dev_path)]
+        # dev_data_list.extend(mozilla_data_list)
+        # dev_data_list.extend(librispeech_data_list)
+        # dev_data_list.extend(vocalset_data_list)
 
         dev_noise_list = [tag for tag in iglob( self.config.dev_noise_path )]
         dev_noise_list = np.random.choice(dev_noise_list, len(dev_data_list))
@@ -233,6 +252,8 @@ class REG:
                 self.tb_dir+'/train', sess.graph, max_queue=10 )
             validation_writer = tf.summary.FileWriter(self.tb_dir + '/validation', sess.graph)
             merge_op = tf.summary.merge_all()
+
+            # wandb.tensorflow.log(tf.summary.merge_all())
             # self.saver.restore(sess=sess, save_path=test_saver)
             
             ####################    Musk    ###################################
@@ -280,6 +301,8 @@ class REG:
                 loss_dev, summary_dev, _ = self._training_process(sess, epoch, dev_data_list,
                                                                  dev_noise_list, dev_snr_list,
                                                                  merge_op, step, validation_writer, learning_rate, train=False)
+
+                # wandb.log({"train mse loss" : loss_reg, "dev mse loss" : loss_dev})
 
                 if epoch == 0:
                     best_reg_loss = loss_dev
