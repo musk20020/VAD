@@ -787,10 +787,10 @@ def _gen_VAD_training_data_runtime(clean_file_list, noise_file_list, config, tra
     _, e = ap.cal_frame_loudness(y_clean, config.hop_length * 2, config.hop_length)
 
     ##########################      data preprocessing      #############################
-    noisy_spec = audio2spec(y_noisy, forward_backward=False, SEQUENCE=False, norm=False,
-                            hop_length=config.hop_length, under4k_dim=config.under4k, mel_freq=True)
-    clean_spec = audio2spec(y_clean, forward_backward=False, SEQUENCE=False, norm=False,
-                            hop_length=config.hop_length, under4k_dim=config.under4k, mel_freq=True)
+    # noisy_spec = audio2spec(y_noisy, forward_backward=False, SEQUENCE=False, norm=False,
+    #                         hop_length=config.hop_length, under4k_dim=config.under4k, mel_freq=True)
+    # clean_spec = audio2spec(y_clean, forward_backward=False, SEQUENCE=False, norm=False,
+    #                         hop_length=config.hop_length, under4k_dim=config.under4k, mel_freq=True)
     # clean_spec = clean_spec[:len(e)]
     # noisy_spec = noisy_spec[:len(e)]
 

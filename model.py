@@ -88,15 +88,21 @@ class REG:
                                               output_c=wandb.config.get("l3_output_num"), dilation=[1, 1, 1, 1],
                                               activate=tf.nn.leaky_relu, padding='SAME', trainable=True)  # [N, 124, t-4, 128]
                 reshape = tf.reshape(tf.transpose(layer_3, perm=[0, 2, 3, 1]),
-                                     [-1, self.config.stoi_correlation_time, 10 * input_dimension])
+                                     [-1, self.config.stoi_correlation_time, wandb.config.get("l3_output_num") * input_dimension])
                 output = tfu._add_3dfc_layer(reshape, 10 * input_dimension, 1,
                                                '4', activate_function=tf.nn.sigmoid, trainable=True, keep_prob=1)
                 # softmax = tf.nn.softmax(layer_4, )
 
             with tf.name_scope('reg_loss'):
                 self.loss_mse_denoiser = tf.losses.mean_squared_error(output, self.ground_truth)
+                predict_speech = tf.cast(output>0.5, tf.float32)
+                self.speech_hit_rate = tf.div(tf.reduce_sum(tf.multiply(predict_speech,self.ground_truth)),tf.reduce_sum(self.ground_truth))
+                self.noise_hit_rate = tf.div(tf.reduce_sum(tf.multiply(tf.subtract(1.0, predict_speech),tf.subtract(1.0, self.ground_truth)))
+                                             , tf.reduce_sum(tf.subtract(1.0, self.ground_truth)))
                 self.total_loss = self.loss_mse_denoiser
-                tf.summary.scalar('Loss mse', self.total_loss)
+                tf.summary.scalar('Loss mse', self.loss_mse_denoiser)
+                tf.summary.scalar('SHR', self.speech_hit_rate)
+                tf.summary.scalar('NHR', self.noise_hit_rate)
                 # wandb.log({"Loss mse": self.loss_mse_denoiser})
 
 
@@ -176,18 +182,22 @@ class REG:
                              #self.train : train
                              }
                 if train:
-                    _, loss_reg, summary = sess.run(
-                        [self.optimizer_1, self.total_loss, merge_op
+                    _, loss_reg, summary, SHR, NHR = sess.run(
+                        [self.optimizer_1, self.total_loss, merge_op, self.speech_hit_rate, self.noise_hit_rate
                          ], feed_dict=feed_dict )
                     
                     step += 1
                     writer.add_summary( summary, step )
                     wandb.log({"train mse loss": loss_reg})
+                    wandb.log({"train SHR": SHR})
+                    wandb.log({"train NHR": NHR})
                 else:
-                    loss_reg, summary = sess.run(
-                        [self.total_loss, merge_op
+                    loss_reg, summary, SHR, NHR = sess.run(
+                        [self.total_loss, merge_op, self.speech_hit_rate, self.noise_hit_rate
                          ], feed_dict=feed_dict )
                     wandb.log({"dev mse loss": loss_reg})
+                    wandb.log({"dev SHR": SHR})
+                    wandb.log({"dev NHR": NHR})
                 
                 loss_reg_tmp += loss_reg
                 count += 1
@@ -277,9 +287,9 @@ class REG:
             audio_len = len( data_list )
             noise_len = len( noise_list )
             snr_list = np.random.choice(snr, audio_len)
-            with open('train_snr.csv', 'w') as f:
-                csv_writer = csv.writer(f)
-                csv_writer.writerows(snr_list)
+            # with open('train_snr.csv', 'w') as f:
+            #     csv_writer = csv.writer(f)
+            #     csv_writer.writerows(snr_list)
 
             dev_snr = ['-4dB']
             dev_audio_len = len( dev_data_list )
