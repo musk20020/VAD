@@ -2,19 +2,9 @@ import tensorflow as tf
 import numpy as np
 import pdb
 
-# from CRNN_512window_model import REG
-# from RNN_512window_model import REG
-# from CRNN_separation_model import REG
-# from twinnet_512window_model import REG
-# from twinnet_norm_model import REG
-# from TwinNetVGG_model import REG
-# from genTrainingData import REG
-# from GA_model import REG
-from module_model import REG
-# from SN_model import REG
-# from quantize_model import REG
+
+from model import REG
 from os.path import join
-#from sklearn.cross_validation import train_test_split
 from configuration import get_config
 
 #np.random.seed(1234567)

@@ -200,33 +200,33 @@ def audio2spec(y, forward_backward=None, SEQUENCE=None, norm=True, hop_length=25
                under4k_dim=0, gender=None, threshold=False, featureMap=None):
  
     NUM_FFT = np.int(hop_length*2)
-   
-    if mel_freq:
-        D = librosa.feature.melspectrogram(y, sr=16000, n_fft=NUM_FFT, hop_length=hop_length,
-                                           n_mels=48, fmax=6000, power=1)
-    else:
-        D = librosa.stft(y,
-                         n_fft=NUM_FFT,
-                         hop_length=hop_length,
-                         win_length=NUM_FFT,
-                         window=scipy.signal.hamming)
+
+    D = librosa.stft(y,
+                     n_fft=NUM_FFT,
+                     hop_length=hop_length,
+                     win_length=NUM_FFT,
+                     window=scipy.signal.hamming,
+                     center=False)
+
     if angle:
         Sxx = np.angle(D)
     elif under4k_dim:
         D = D[:under4k_dim]
         Sxx = abs(D)
-    elif mel_freq:
-        Sxx = abs(D*58)
     else:
         Sxx = abs(D)
 
+    if mel_freq:
+        Sxx = librosa.feature.melspectrogram(S=Sxx, sr=16000, n_fft=NUM_FFT, hop_length=hop_length,
+                                           n_mels=48, fmax=8000, power=1)
+        # print(Sxx.shape)
     if norm:
         # Sxx_mean = np.mean( Sxx, 1, keepdims=True)
         # Sxx_var = np.sqrt(np.var(Sxx, 1, keepdims=True))
         # Sxx_r = np.zeros(Sxx.shape[])
 
-        mean = np.zeros((257))
-        var = np.zeros((257))
+        mean = np.zeros(Sxx.shape[0])
+        var = np.zeros(Sxx.shape[0])
         if featureMap is not None:
             Df = librosa.stft(featureMap,
                               n_fft=NUM_FFT,
@@ -240,10 +240,10 @@ def audio2spec(y, forward_backward=None, SEQUENCE=None, norm=True, hop_length=25
                 var = np.sqrt(0.001*((Sxx[:,i]-mean)**2)+0.999*(var**2))
                 Sxx[:,i] = (Sxx[:,i]-mean)/var
                 Sxxf[:,i] = (Sxxf[:,i]-mean)/var
-            return Sxx[:,500:].T, Sxxf[:,500:].T
+            return Sxx.T, Sxxf.T
         else:
             for i in range(Sxx.shape[1]):
-                mean = 0.001*Sxx[:,i]+0.999*Sxx
+                mean = 0.001*Sxx[:,i]+0.999*mean
                 var = np.sqrt(0.001*((Sxx[:,i]-mean)**2)+0.999*(var**2))
                 Sxx[:,i] = (Sxx[:,i]-mean)/var
             return Sxx.T
@@ -262,7 +262,7 @@ def audio2spec(y, forward_backward=None, SEQUENCE=None, norm=True, hop_length=25
     if SEQUENCE:
         return Sxx_r.reshape(shape[0], 1, shape[1])
     else:
-        return Sxx_r[500:]
+        return Sxx_r
 
 def phasespec(y, forward_backward=None, SEQUENCE=None, norm=True, hop_length=256, frame_num=None, mel_freq=False, angle=False):
     if frame_num is None:
@@ -481,129 +481,6 @@ def gen_noisy(target_file, noise_file, SNR, preEnhance=False, getNoise=False):
     else:
         return y_target, y_noisy
 
-    
-def gen_multi_speaker_noisy(target_file, noise_file, SNR_speaker, SNR_noise, label, data_weights, voice_path, min_speaker_mum, max_speaker_mum, gender_label=None):
-    
-    def check_min_length(y, min_length):
-        len_y = len(y)
-        if len_y < min_length:
-            tmp = (min_length // len_y) + 1
-            #y = np.array( [x for j in [y] * tmp for x in j] )
-            y = np.tile(y, tmp)
-            y = y[:min_length]
-        return y
-
-    def same_length(fix_len_data, flex_len_data, mode='target'):
-        if mode=='target':
-            if len( flex_len_data ) < len(fix_len_data):
-                #tmp = (len( fix_len_data ) // len( flex_len_data)) + 1
-                #flex_len_data = np.array( [x for j in [flex_len_data] * tmp for x in j] )
-                flex_len_data = check_min_length(flex_len_data, len(fix_len_data))
-                flex_len_data = flex_len_data[:len( fix_len_data )]
-            else:
-                flex_len_data = flex_len_data[:len( fix_len_data )]
-            return flex_len_data
-        else:
-            if len( flex_len_data ) < len(fix_len_data):
-                #tmp = (len( fix_len_data ) // len( flex_len_data)) + 1
-                #flex_len_data = np.array( [x for j in [flex_len_data] * tmp for x in j] )
-                #flex_len_data = flex_len_data[:len( fix_len_data )]
-                fix_len_data = fix_len_data[:len( flex_len_data )]
-            else:
-                flex_len_data = flex_len_data[:len( fix_len_data )]
-            return fix_len_data, flex_len_data
-
-    def pickup_file(label, pick_prob, path):
-        other_speaker = np.random.choice(label, p=pick_prob/np.sum(pick_prob))
-        #second_speech_path = '{}/{}_16k/*'.format(config.voice_path.replace('/*/*', ''), second_speaker)
-        #other_speech_path = '{}/{}_16k/*'.format(path.replace('/*/*', ''), other_speaker) # Aurora4
-        other_speech_path = '{}/{}/*'.format(path.replace('/*/*', ''), other_speaker) # TCC300
-        #other_speech_path = '{}/{}_16k/*'.format(path.replace('_gender/female/*/*', ''), other_speaker)
-        other_speech_list = [tag for tag in iglob(other_speech_path)]
-        try:
-            other_speaker_file = np.random.choice(other_speech_list)
-        except:
-            print(other_speech_path)
-        return other_speaker_file
-
-    def wgn(x, SNR=13.0):
-        snr = 10**(SNR/10.0)
-        xpower = np.sum(x**2)/len(x)
-        npower = xpower / snr
-        return np.random.randn(len(x)) * np.sqrt(npower)
-
-    v = ['second_file', 'third_file', 'fourth_file']
-    other_speaker_num = np.random.randint(min_speaker_mum, max_speaker_mum+1)
-    #speaker = target_file.split( '/' )[-2].split('_')[0] # Aurora4 speaker
-    speaker = target_file.split( '/' )[-2] # TCC300
-    speaker_idx = label.index(speaker)
-    pick_prob = data_weights[speaker_idx]
-    speaker_dict = dict((v[i], pickup_file(label, pick_prob, voice_path)) for i in range(other_speaker_num))
-    #print(speaker_dict)   
-    # SNR_speaker = np.random.randint(2, 8)
-    # SNR_noise = np.random.randint(2, 8)
-    # SNR = float( SNR.split( 'dB' )[0] )
-    # y_target, _ = librosa.load( target_file, sr=16000, mono=True )
-    y_target = scipy_load_wav(target_file)
-    y_target = check_min_length(y_target, 70*256)
-    target_pwr = sum( abs( y_target ) ** 2 ) / len( y_target )
-    
-    if other_speaker_num != 0:
-        y_2nd = scipy_load_wav(speaker_dict['second_file'])
-        y_2nd = same_length( y_target, y_2nd)
-        y_2nd -= np.mean( y_2nd )
-
-    noise = scipy_load_wav(noise_file)
-    noise = same_length( y_target, noise )
-    noise -= np.mean( noise )
-    y_target_var = target_pwr / (10 ** (SNR_speaker / 10))
-    noise_target_var = target_pwr / (10 ** (SNR_noise / 10))
-    noise = np.sqrt( noise_target_var ) * noise / np.std( noise )
-
-
-    
-    #eq_s = EQ()
-    #y_target = audio_eq(None, eq_s, sr=16000, window=256, y=y_target)
-
-
-    if other_speaker_num == 0:
-        #white_noise = wgn(y_target, SNR=5)
-        y_noisy = y_target + noise
-        #y_noisy = audio_eq(None, eq_s, sr=16000, window=256, y=y_noisy)
-    elif other_speaker_num == 1:
-        #white_noise = wgn(y_target, SNR=5)
-        y_2nd = np.sqrt( y_target_var ) * y_2nd / np.std( y_2nd )
-        y_noisy = y_target + y_2nd + noise
-        #y_noisy = audio_eq(None, eq_s, sr=16000, window=256, y=y_noisy)
-        #y_noisy_wonoise = y_target + y_2nd
-    elif other_speaker_num == 2:
-        y_3rd = scipy_load_wav(speaker_dict['third_file'])
-        y_3rd = same_length( y_target, y_3rd )
-        y_3rd -= np.mean( y_3rd )
-        
-        y_0dB_var = target_pwr / (10 ** (0 / 10))
-        y_2nd = np.sqrt( y_0dB_var ) * y_2nd / np.std( y_2nd )
-        y_3rd = np.sqrt( y_0dB_var ) * y_3rd / np.std( y_3rd )
-        total_other_speech = y_2nd + y_3rd
-        total_other_speech = np.sqrt( y_target_var ) * total_other_speech / np.std( total_other_speech )
-        y_noisy = y_target + total_other_speech
-    else:
-        y_3rd = scipy_load_wav(speaker_dict['third_file'])
-        y_3rd = same_length( y_target, y_3rd )
-        y_3rd -= np.mean( y_3rd )
-        y_4th = scipy_load_wav(speaker_dict['fourth_file'])
-        y_4th = same_length( y_target, y_4th )
-        y_4th -= np.mean( y_4th )
-        
-        y_0dB_var = target_pwr / (10 ** (0 / 10))
-        y_2nd = np.sqrt( y_0dB_var ) * y_2nd / np.std( y_2nd )
-        y_3rd = np.sqrt( y_0dB_var ) * y_3rd / np.std( y_3rd )
-        y_4th = np.sqrt( y_0dB_var ) * y_4th / np.std( y_4th )
-        total_other_speech = y_2nd + y_3rd + y_4th
-        total_other_speech = np.sqrt( y_target_var ) * total_other_speech / np.std( total_other_speech )
-        y_noisy = y_target + total_other_speech
-        
-    return y_target, y_noisy
 
 def _preprocessing(y, y1=None):
     window = 256
@@ -757,99 +634,6 @@ def _gen_denoise_training_data_runtime(clean_file_list, noise_file_list, config,
         # return noisy_spec[:,:,:-4,:], clean_spec[:,:-4,:], noisy_spec_norm
     else: 
         return noisy_spec, clean_spec
-    
-
-def _gen_training_data_runtime(clean_file_list, noise_file_list, label, gender_embed, config, data_weights=None, train=True, num=None):
-
-
-    def wgn(x, maximum=0.1):
-        noise = np.random.random_sample(len(x))-0.5
-        return x+noise*maximum
-
-    #target_SNR = snr_list[num]
-    #SNR = float( target_SNR.split( 'dB' )[0] )
-    clean_file = clean_file_list[num]
-    #noise_file = noise_file_list[num]
-    noise_path = noise_file_list[num]
-    noise_list = [tag for tag in iglob(noise_path+'/*')]
-    noise_file = noise_list[np.random.randint(len(noise_list))]
-    speaker = clean_file.split( '/' )[-2] # TCC300
-    #speaker = clean_file.split( '/' )[-2].split('_')[0] # Aurora4 speaker
-    #speaker = clean_file.split('/')[-2] # aidatatang speaker
-    #speaker = clean_file.split( '/' )[-1].split('.')[0] # mozilla speaker
-
-    if train:
-        #SNR = np.random.randint(-5, 5) #1~5
-        SNR_speaker = np.random.randint(-3, 4) #1~5
-        SNR_noise = np.random.randint(-3, 5) #3~6
-        voice_path = config.voice_path
-        min_speaker_mum = 0
-        max_speaker_mum = 0
-    else:
-        #SNR = 3
-        SNR_speaker = 1
-        SNR_noise = 1
-        voice_path = config.dev_voice_path
-        min_speaker_mum = 0
-        max_speaker_mum = 0
-
-    if config.CRNN:
-        y_clean, y_noisy = gen_noisy(clean_file, noise_file, SNR, preEnhance=config.preEnhance)
-    else:
-        y_clean, y_noisy = gen_multi_speaker_noisy(clean_file, noise_file, SNR_speaker, SNR_noise, label, data_weights, voice_path, min_speaker_mum, max_speaker_mum)  
-    # y_noisy, y_clean = _preprocessing(y_noisy, y_clean)
-
-    #white_noise = wgn(y_noisy)
-    # scale = np.random.randint(70, 100)/100
-    max_y = np.max( np.abs( y_noisy ) )
-    y_noisy = y_noisy / max_y
-    #y_noisy = wgn(y_noisy, maximum=0.1)
-    #y_noisy_wonoise /= max_y
-
-    ##########################      data preprocessing      #############################
-    if config.CRNN or config.CRNN_separation:
-        noisy_spec = audio2spec( y_noisy, forward_backward=False, SEQUENCE=False, norm=False, hop_length=config.hop_length)
-        y_clean /= max_y
-        clean_spec = audio2spec( y_clean, forward_backward=False, SEQUENCE=False, norm=False, hop_length=config.hop_length)
-
-        ###   stoi shape  ###
-        shift = random.randint(0, 10)
-        time_step = noisy_spec.shape
-        clean_dim = clean_spec.shape
-        residual = (time_step[0] - shift) % config.stoi_correlation_time
-        noisy_spec = noisy_spec[shift:time_step[0] - residual]
-        noisy_spec = noisy_spec.reshape( [-1, config.stoi_correlation_time, time_step[1]] )
-        noisy_spec = np.expand_dims(noisy_spec.transpose([0,2,1]), axis=3)
-        
-        clean_spec = clean_spec[shift:time_step[0] - residual]
-        clean_spec = clean_spec.reshape( [-1, config.stoi_correlation_time, clean_dim[1]] )
-        #clean_spec = clean_spec[:,3:-3,:]
-    else:
-        noisy_spec = audio2spec( y_noisy, forward_backward=True, SEQUENCE=False, norm=False,
-                                 hop_length=config.hop_length,
-                                 frame_num=config.input_frame_num, mel_freq=config.mel_freq )
-        y_clean = y_clean / max_y
-        clean_spec = audio2spec( y_clean, forward_backward=False, SEQUENCE=False, norm=False, hop_length=config.hop_length,
-                                 frame_num=config.input_frame_num )
-
-    ##########################      embedding preprocessing      ##############################
-    
-    speaker_embed = gender_embed[label.index( speaker ), :].reshape([1, 64])
-
-    if config.CRNN_separation:
-       input_embed = np.repeat( speaker_embed, clean_spec.shape[1]*clean_spec.shape[0], axis=0 )
-       input_embed = input_embed.reshape( [clean_spec.shape[0], clean_spec.shape[1], -1] )
-       # filter_index = np.reshape(np.repeat(np.argmin(np.mean(np.square(gender_embed - speaker_embed), axis=1)), clean_spec.shape[0]), [-1, 1])
-    #else:
-    #   input_embed = np.repeat( speaker_embed, clean_spec.shape[0], axis=0 )
-
-    ##########################      data return      ##############################
-    if config.CRNN_separation:
-        return noisy_spec, clean_spec, input_embed
-    elif config.CRNN:
-        return noisy_spec, clean_spec
-    else:
-        return noisy_spec, clean_spec, input_embed
 
 def _gen_audio(target_file, noise_file, SNR, preEnhance=False):
     def check_min_length(y, min_length):
@@ -906,64 +690,6 @@ def _stream_norm(noisySpec, cleanSpec=None):
             cleanSpec[i, :] = (cleanSpec[i, :] - mean) / (var+np.finfo(np.float32).min)
             return noisySpec, cleanSpec
     return noisySpec
-
-def _gen_wiener_denoise_training_data_runtime(clean_file_list, noise_file_list, config, train=True, num=None):
-    def wgn(x, maximum=0.1):
-        noise = np.random.random_sample(len(x)) - 0.5
-        return x + noise * maximum
-
-    clean_file = clean_file_list[num]
-    noise_path = noise_file_list[num]
-    noise_list = [tag for tag in iglob(noise_path + '/*')]
-    noise_file = noise_list[np.random.randint(len(noise_list))]
-    speaker = clean_file.split('/')[-2]  # TCC300
-    # speaker = clean_file.split( '/' )[-2].split('_')[0] # Aurora4 speaker
-    # speaker = clean_file.split('/')[-2] # aidatatang speaker
-    # speaker = clean_file.split( '/' )[-1].split('.')[0] # mozilla speaker
-
-    if train:
-        SNR_noise = np.random.randint(-3, 3)  # 3~6
-        voice_path = config.voice_path
-    else:
-        SNR_noise = 0
-        voice_path = config.dev_voice_path
-
-
-    y_clean, y_noisy, y_noise = gen_noisy(clean_file, noise_file, SNR_noise, config.preEnhance, config.wienerFilter)
-    # white_noise = wgn(y_noisy)
-
-    ##########################      data preprocessing      #############################
-    noisy_spec = audio2spec(y_noisy, forward_backward=False, SEQUENCE=False, norm=False,
-                            hop_length=config.hop_length, under4k_dim=config.under4k)
-    clean_spec = audio2spec(y_clean, forward_backward=False, SEQUENCE=False, norm=False,
-                            hop_length=config.hop_length, under4k_dim=config.under4k, threshold=False)
-    noise_spec = audio2spec(y_noise, forward_backward=False, SEQUENCE=False, norm=False,
-                            hop_length=config.hop_length)
-
-    # noisy_spec = wiener_filter(noisy_spec, noise_spec)
-
-    ###   stoi shape  ###
-    shift = random.randint(0, 10)
-    time_step = noisy_spec.shape
-    clean_dim = clean_spec.shape
-    residual = (time_step[0] - shift) % config.stoi_correlation_time
-    noisy_spec = noisy_spec[shift:time_step[0] - residual]
-    noisy_spec = noisy_spec.reshape([-1, config.stoi_correlation_time, time_step[1]])
-
-    clean_spec = clean_spec[shift:time_step[0] - residual]
-    clean_spec = clean_spec.reshape([-1, config.stoi_correlation_time, clean_dim[1]])
-
-    noise_spec = noise_spec[shift:time_step[0] - residual]
-    noise_spec = noise_spec.reshape([-1, config.stoi_correlation_time, clean_dim[1]])
-
-    if config.norm:
-        noisy_spec_norm, _ = audio2spec( y_noisy, forward_backward=False, SEQUENCE=False, norm=True, hop_length=config.hop_length, under4k_dim=config.under4k, featureMap=y_clean)
-
-        noisy_spec_norm = noisy_spec_norm[shift:time_step[0] - residual]
-        noisy_spec_norm = noisy_spec_norm.reshape( [-1, config.stoi_correlation_time, time_step[1]] )
-        noisy_spec_norm = np.expand_dims(noisy_spec_norm.transpose([0,2,1]), axis=3)
-
-    return noisy_spec, clean_spec, noisy_spec_norm, noise_spec
 
 
 def _gen_denoise_training_data_runtime_v2(clean_file_list, noise_file_list, config, train=True, num=None):
@@ -1029,4 +755,77 @@ def _gen_denoise_training_data_runtime_v2(clean_file_list, noise_file_list, conf
 
     ##########################      data return      ##############################
     return noisy_spec, clean_spec, noisy_spec_norm, clean_spec_norm
+
+def _gen_VAD_training_data_runtime(clean_file_list, noise_file_list, config, train=True, num=None):
+    def wgn(x, maximum=0.1):
+        noise = np.random.random_sample(len(x)) - 0.5
+        return x + noise * maximum
+
+    clean_file = clean_file_list[num]
+    noise_path = noise_file_list[num]
+    noise_list = [tag for tag in iglob(noise_path + '/*')]
+    noise_file = noise_list[np.random.randint(len(noise_list))]
+
+    if train:
+        SNR_noise = np.random.randint(-5, 5)  # 3~6
+        voice_path = config.voice_path
+    else:
+        SNR_noise = -2
+        voice_path = config.dev_voice_path
+
+    y_clean, y_noisy = ap.gen_training_data(clean_file, noise_file, SNR_noise)
+    clean_is_not_finite = len(np.where(np.isfinite(y_clean)==False)[0])>0
+    noisy_is_not_finite = len(np.where(np.isfinite(y_noisy) == False)[0]) > 0
+    while clean_is_not_finite or noisy_is_not_finite :
+        clean_file = clean_file_list[np.random.randint(0, len(clean_file_list))]
+        clean_file = noise_list[np.random.randint(0, len(noise_list))]
+        y_clean, y_noisy = ap.gen_training_data(clean_file, noise_file, SNR_noise)
+        clean_is_not_finite = len(np.where(np.isfinite(y_clean) == False)[0]) > 0
+        noisy_is_not_finite = len(np.where(np.isfinite(y_noisy) == False)[0]) > 0
+
+    ###  energy VAD  ###
+    _, e = ap.cal_frame_loudness(y_clean, config.hop_length * 2, config.hop_length)
+
+    ##########################      data preprocessing      #############################
+    noisy_spec = audio2spec(y_noisy, forward_backward=False, SEQUENCE=False, norm=False,
+                            hop_length=config.hop_length, under4k_dim=config.under4k, mel_freq=True)
+    clean_spec = audio2spec(y_clean, forward_backward=False, SEQUENCE=False, norm=False,
+                            hop_length=config.hop_length, under4k_dim=config.under4k, mel_freq=True)
+    # clean_spec = clean_spec[:len(e)]
+    # noisy_spec = noisy_spec[:len(e)]
+
+    noisy_spec_norm = audio2spec(y_noisy, forward_backward=False, SEQUENCE=False, norm=True,
+                            hop_length=config.hop_length, under4k_dim=config.under4k, mel_freq=True)
+
+    noisy_spec_norm = noisy_spec_norm[500:len(e)] # 500 for streaming normalize, 100 of 500 for VAD energy init
+    e = (e>0)[500:]
+
+
+    ###  stoi shape  ###
+    shift = random.randint(0, 10)
+    time_step = noisy_spec_norm.shape
+    # clean_dim = clean_spec.shape
+    residual = (time_step[0] - shift) % config.stoi_correlation_time
+
+    # noisy_spec = noisy_spec[shift:time_step[0] - residual]
+    # noisy_spec = noisy_spec.reshape([-1, config.stoi_correlation_time, time_step[1]])
+
+    # clean_spec = clean_spec[shift:time_step[0] - residual]
+    # clean_spec = clean_spec.reshape([-1, config.stoi_correlation_time, clean_dim[1]])
+
+    noisy_spec_norm = noisy_spec_norm[shift:time_step[0] - residual]
+    noisy_spec_norm = noisy_spec_norm.reshape([-1, config.stoi_correlation_time, time_step[1]])
+
+    e = e[shift:time_step[0] - residual]
+    e = e.reshape([-1, config.stoi_correlation_time])
+
+    # clean_spec_norm = clean_spec_norm[shift:time_step[0] - residual]
+    # clean_spec_norm = clean_spec_norm.reshape([-1, config.stoi_correlation_time, clean_dim[1]])
+
+    noisy_spec_norm = np.expand_dims(noisy_spec_norm.transpose([0, 2, 1]), axis=3)
+    e = np.expand_dims(e, axis=2)
+    # clean_spec_norm = np.expand_dims(clean_spec_norm.transpose([0, 2, 1]), axis=3)
+
+    ##########################      data return      ##############################
+    return noisy_spec_norm, e
 

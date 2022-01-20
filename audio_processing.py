@@ -98,7 +98,7 @@ def reverb(y, delay):
     # librosa.output.write_wav("/Users/musk/Desktop/test.wav", output, 16000)
     return output[:len(y)]
 
-def wiener_filter():
+def wiener_filter_demo():
     denoiseAI = Denoise_AI()
     sess = denoiseAI.model_init()
     input_filename = '/Users/musk/dataset/DenoiseTestSet/noisy/-5dB/G01FM0110010_h_babble.wav'
@@ -146,6 +146,26 @@ def wiener_filter():
 
     maxv = np.iinfo(np.int16).max
     librosa.output.write_wav("/Users/musk/Desktop/test.wav", (est_y / np.max(est_y) * maxv).astype(np.int16), 16000)
+
+def wiener_filter(mag_src, mag_noise):
+
+    N_FFT = 512
+    frameshift = 256
+    max_att = 15
+    att_lin = 10 ** (-max_att / 20.0)
+    overest = 2
+
+    # S_bb = np.mean(np.square(mag_noise), axis=1)
+    # S_bb = overest * S_bb
+    # H = np.maximum(att_lin, 1 - np.divide(np.square(mag_noise[:, k]) * overest, np.square(mag_src[:, k])))
+    # filtered_src[:, k] = np.multiply(H, mag_src[:, k])
+
+    filtered_src = np.zeros(np.shape(mag_src))
+    for k in range(0, mag_noise.shape[1]):
+        H = np.maximum(att_lin, 1 - np.divide(np.square(mag_noise[:, k])*overest, np.square(mag_src[:, k])))
+        filtered_src[:, k] = np.multiply(H, mag_src[:, k])
+
+    return filtered_src
 
 
 def second_order_filter(y):
@@ -215,16 +235,16 @@ def second_order_filter_freq(y):
     # filter_y = librosa.util.fix_length(filter_y, len(y), mode='edge')
     return filter_y
 
-def cal_frame_loudness(y):
-    t = 25  # 4800(ms)/16
+def cal_frame_loudness(y, window, hop_length):
+    t = 100  # 4800(ms)/16
     e = np.zeros([t])
     e_gate = np.zeros([t])
-    n = (len(y) - 256) // 256 +1
+    n = (len(y) - window) // hop_length
     l_KG = np.zeros([n])
     e_hist = np.zeros([n])
     f = 0
-    for i in range(0, len(y) - 256, 256):
-        frame = y[i:i + 256]
+    for i in range(0, n):
+        frame = y[i*hop_length:i*hop_length + window]
         z = np.mean(frame ** 2)
         l = -0.691 + 10 * np.log10(z)
 
@@ -379,6 +399,75 @@ def loudness_normalize_to_dB(noisy, dB, ref=None):
         return output, ref
     else:
         return output
+
+def EQ(init_freq=60, max_freq=8000):
+    def generate_data(t, a1, a2, a3, a4, a5, a6):
+        y = a1 + a2*t + a3*t**2 + a4*t**3+ a5*t**4 + a6*t**5
+        return y
+
+    def fun(x, t, y):
+        return (x[0] + x[1]*t + x[2]*t**2 + x[3]*t**3+ x[4]*t**4 + x[5]*t**5) - y
+
+
+    x0 = np.ones( 6 )
+
+    center_freq = []
+    freq_res = []
+    freq = init_freq
+    while freq < max_freq:
+        center_freq.append(freq)
+        freq *= 2**(1/3)
+
+    matter_point = np.ceil(len(center_freq)/5)
+
+    low_bound = np.array(np.random.randint(-5, 0)).reshape([1, -1])
+    mid_bound = np.random.randint(-3, 3, size=3).reshape([1, -1])
+    up_bound = np.array(np.random.randint(-5, 5)).reshape([1, -1])
+    bound = np.concatenate((low_bound, mid_bound, up_bound), axis=1)
+
+    # print(1)
+    for i in range(len(center_freq)):
+        index = int(np.round(i/matter_point))
+        freq_res.append(np.random.randint(-2, 2) + bound[0, index])
+
+    res_lsq = least_squares(fun, x0, args=(np.log10(np.array(center_freq)), np.array(freq_res)))
+
+    o = generate_data(np.log10(np.array(center_freq)), *res_lsq.x)
+
+    return res_lsq
+
+def wgn(x, SNR=5.0, noise=None):
+    snr = 10 ** (SNR / 10.0)
+    xpower = np.sum( x ** 2 ) / len( x )
+    tpower = xpower / snr
+    if noise is None:
+        noise = np.random.randn( len( x ) )
+    else:
+        noise = noise[:len(x)]
+    npower = np.sum( noise ** 2 ) / len( noise )
+    return  x+noise/npower*tpower
+
+def audio_eq(audio_path, EQ, sr=16000, window=256, y=None):
+    def generate_data(t, a1, a2, a3, a4, a5, a6):
+        y = a1 + a2*t + a3*t**2 + a4*t**3+ a5*t**4 + a6*t**5
+        return y
+
+    max_freq = sr/2
+    freq_resolution = window/2+1
+    band = np.linspace(1, max_freq, freq_resolution)
+    eq = generate_data(np.log10(np.array(band)), *EQ.x)
+    eq[0] = 0
+    eq = 10**(eq/10)
+
+    if y is None:
+        y, _ = librosa.load(audio_path, sr=sr)
+    stft = librosa.stft(y, 256, 128, 256)
+
+    eq_stft = np.multiply(stft, np.reshape(eq, [-1, 1]))
+
+    eq_y = librosa.istft(eq_stft, 128, 256)
+
+    return eq_y
 
 def loudness_normalize_demo():
     input_filename = '/Users/musk/dataset/DenoiseTestSet/noisy/-5dB/G01FM0110010_h_babble.wav'
@@ -561,3 +650,4 @@ def gen_training_data(clean_file, noise_file, SNR=0):
 
     # return clean, noisy, noisy_norm, clean_norm
     return clean, noisy
+

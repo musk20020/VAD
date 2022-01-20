@@ -357,11 +357,11 @@ def _add_basicRNN(input_, hidden_size, layer_num, keep_prob=1, trainable=True, a
 #     return outputs
 
 def _add_conv_layer(_input, layer_num, filter_h, filter_w, input_c, output_c, strides=[1, 1, 1, 1],
-                        dilation=[1, 1, 1, 1], activate=tf.nn.tanh, padding='VALID', dtype=tf.float32):
+                        dilation=[1, 1, 1, 1], activate=tf.nn.tanh, padding='VALID', dtype=tf.float32, trainable=True):
     with tf.variable_scope( "conv_layer_" + layer_num ):
         # CNN output default is "NHWC"
         weights = tf.get_variable( 'conv_layer_w' + layer_num, shape=[filter_h, filter_w, input_c, output_c]
-                                   , initializer=tf.contrib.layers.xavier_initializer(), dtype=dtype )
+                                   , initializer=tf.contrib.layers.xavier_initializer(), dtype=dtype, trainable=trainable )
         # weights = tf.cast(weights, tf.float16)
         conv = tf.nn.conv2d( _input, weights, strides=strides,
                              padding=padding, dilations=dilation )

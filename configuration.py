@@ -22,14 +22,14 @@ def str2bool(v):
 train_arg = parser.add_argument_group('Data')
 
 ###   machine setting
-train_arg.add_argument('--note', type=str, default='moduleModel', help="describe your model")
-train_arg.add_argument('--date', type=str, default='220107-ensemble', help="training model date")
-train_arg.add_argument('--gpu_index', type=str, default='2', help="training model date")
+train_arg.add_argument('--note', type=str, default='VAD', help="describe your model")
+train_arg.add_argument('--date', type=str, default='220119', help="training model date")
+train_arg.add_argument('--gpu_index', type=str, default='1', help="training model date")
 train_arg.add_argument('--thread_num', type=int, default=8, help="parallel processing number")
-train_arg.add_argument('--read_ckpt', type=str, default='saver_moduleModel/211230-humanVoice', help="read ckpt file path(/ read_ckpt /)")
-# train_arg.add_argument('--read_ckpt', type=str, default=None, help="read ckpt file path(/ read_ckpt /)")
-train_arg.add_argument('--log_path', type=str, default='/AudioProject/nb_denoise/model/logs', help="save log path")
-train_arg.add_argument('--saver_path', type=str, default='/AudioProject/nb_denoise/model/saver', help="save model path")
+# train_arg.add_argument('--read_ckpt', type=str, default='saver_moduleModel/211230-humanVoice', help="read ckpt file path(/ read_ckpt /)")
+train_arg.add_argument('--read_ckpt', type=str, default=None, help="read ckpt file path(/ read_ckpt /)")
+train_arg.add_argument('--log_path', type=str, default='/AudioProject/VAD/model/logs', help="save log path")
+train_arg.add_argument('--saver_path', type=str, default='/AudioProject/VAD/model/saver', help="save model path")
 
 train_arg.add_argument('--voice_path', type=str, default='/AudioProject/dataset/TCC300_rename/Train/*/*'
                        , help="clean voice data path")
@@ -45,7 +45,7 @@ train_arg.add_argument('--shuffle_data_time', type=int, default=3, help="shuffle
 train_arg.add_argument('--progressive', type=bool, default=False, help="progressive training model")
 train_arg.add_argument('--mel_freq_num', type=int, default=64, help="input as log-mel frequency")
 train_arg.add_argument('--input_frame_num', type=int, default=2, help="enhance a frame with N frame input(one side)")
-train_arg.add_argument('--hop_length', type=int, default=256, help="frame shift")
+train_arg.add_argument('--hop_length', type=int, default=128, help="frame shift")
 train_arg.add_argument('--clean_sr', type=int, default=16000, help="clean voice sample rate")
 train_arg.add_argument('--noise_sr', type=int, default=16000, help="noise sample rate")
 train_arg.add_argument('--embedding_file', type=str, default='TCC300_CRNN_DVec', help="embedding file need to read")
