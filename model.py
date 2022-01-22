@@ -12,21 +12,17 @@ import os
 from os.path import join
 from tqdm import tqdm
 import xlrd, xlwt
-#from gru_cus_cell import EGGRUCell
-#from gru_poly_cell import GRUPolyCell
 
 tqdm.monitor_interval = 0
-#from utils_2 import np_REG_batch, search_wav, wav2spec, spec2wav, copy_file, np_batch, get_embedding, get_dist_table
 from utils import np_REG_batch, search_wav, copy_file, np_batch, get_embedding, get_dist_table, _gen_audio
 from sklearn.utils import shuffle
 import tensorflow_utils as tfu
 import wandb
 
-#eps = np.finfo(np.float32).epsilon()
 
 class REG:
 
-    def __init__(self, log_path, saver_path, date, gpu_num, note, config):
+    def __init__(self, log_path, saver_path, date, gpu_num, note, config, sweep_config):
 
         os.environ['CUDA_VISIBLE_DEVICES'] = gpu_num
         self.log_path = log_path
@@ -43,22 +39,31 @@ class REG:
         if not os.path.exists( self.tb_dir ):
             os.makedirs( self.tb_dir )
 
+        if wandb.config.get("activate") == "relu":
+            self.activate = tf.nn.relu
+        elif wandb.config.get("activate") == "selu":
+            self.activate = tf.nn.selu
+        elif wandb.config.get("activate") == "leaky_relu":
+            self.activate = tf.nn.leaky_relu
+        elif wandb.config.get("activate") == "tanh":
+            self.activate = tf.nn.tanh
+
 
     def build(self, reuse):
 
-        wandb.init(project="VAD", entity="musktang")
-        wandb.config = {
-            "batch_size" : self.config.batch_size,
-            "filter_h" : 5,
-            "filter_w" : 3,
-            "mel_freq_num" : self.config.mel_freq_num,
-            "l1_output_num" : 40,
-            "l2_output_num": 20,
-            "l3_output_num": 10,
-        }
+        # wandb.init(project="VAD", entity="musktang")
+        # wandb.config = {
+        #     "batch_size" : self.config.batch_size,
+        #     "filter_h" : 5,
+        #     "filter_w" : 3,
+        #     "mel_freq_num" : self.config.mel_freq_num,
+        #     "l1_output_num" : 40,
+        #     "l2_output_num": 20,
+        #     "l3_output_num": 10,
+        # }
 
         self.name = 'VAD'
-        input_dimension = 48  # RNN input
+        input_dimension = wandb.config.get("n_mels")  # RNN input
         output_dimension = 1
 
         with tf.variable_scope(self.name) as vs:
@@ -78,32 +83,30 @@ class REG:
                 layer_1 = tfu._add_conv_layer(self.x_noisy_norm, layer_num='1', filter_h=wandb.config.get("filter_h"),
                                               filter_w=wandb.config.get("filter_w"), input_c=1,
                                                output_c=wandb.config.get("l1_output_num"), dilation=[1, 1, 1, 1],
-                                              activate=tf.nn.leaky_relu, padding='SAME', trainable=True)  # [N, 126, t-2, 512]
+                                              activate=self.activate, padding='SAME', trainable=True)  # [N, 126, t-2, 512]
                 layer_2 = tfu._add_conv_layer(layer_1, layer_num='2', filter_h=wandb.config.get("filter_h"),
                                               filter_w=wandb.config.get("filter_w"), input_c=wandb.config.get("l1_output_num"),
                                               output_c=wandb.config.get("l2_output_num"), dilation=[1, 1, 1, 1],
-                                              activate=tf.nn.leaky_relu, padding='SAME', trainable=True)  # [N, 62, t-4, 512]
+                                              activate=self.activate, padding='SAME', trainable=True)  # [N, 62, t-4, 512]
                 layer_3 = tfu._add_conv_layer(layer_2, layer_num='3', filter_h=wandb.config.get("filter_h"),
                                               filter_w=1, input_c=wandb.config.get("l2_output_num"),
                                               output_c=wandb.config.get("l3_output_num"), dilation=[1, 1, 1, 1],
-                                              activate=tf.nn.leaky_relu, padding='SAME', trainable=True)  # [N, 124, t-4, 128]
+                                              activate=self.activate, padding='SAME', trainable=True)  # [N, 124, t-4, 128]
                 reshape = tf.reshape(tf.transpose(layer_3, perm=[0, 2, 3, 1]),
                                      [-1, self.config.stoi_correlation_time, wandb.config.get("l3_output_num") * input_dimension])
-                output = tfu._add_3dfc_layer(reshape, 10 * input_dimension, 1,
+                output = tfu._add_3dfc_layer(reshape, wandb.config.get("l3_output_num") * input_dimension, 1,
                                                '4', activate_function=tf.nn.sigmoid, trainable=True, keep_prob=1)
-                # softmax = tf.nn.softmax(layer_4, )
 
             with tf.name_scope('reg_loss'):
-                self.loss_mse_denoiser = tf.losses.mean_squared_error(output, self.ground_truth)
+                loss_mse_denoiser = tf.losses.mean_squared_error(output, self.ground_truth)
                 predict_speech = tf.cast(output>0.5, tf.float32)
                 self.speech_hit_rate = tf.div(tf.reduce_sum(tf.multiply(predict_speech,self.ground_truth)),tf.reduce_sum(self.ground_truth))
                 self.noise_hit_rate = tf.div(tf.reduce_sum(tf.multiply(tf.subtract(1.0, predict_speech),tf.subtract(1.0, self.ground_truth)))
                                              , tf.reduce_sum(tf.subtract(1.0, self.ground_truth)))
-                self.total_loss = self.loss_mse_denoiser
-                tf.summary.scalar('Loss mse', self.loss_mse_denoiser)
+                self.total_loss = loss_mse_denoiser
+                tf.summary.scalar('Loss mse', loss_mse_denoiser)
                 tf.summary.scalar('SHR', self.speech_hit_rate)
                 tf.summary.scalar('NHR', self.noise_hit_rate)
-                # wandb.log({"Loss mse": self.loss_mse_denoiser})
 
 
             with tf.name_scope("exp_learning_rate"):
@@ -124,10 +127,10 @@ class REG:
             self.saver = tf.train.Saver()
 
     def _training_process(self, sess, epoch, data_list, noise_list, snr_list, merge_op, step, writer, learning_rate, train=True):
-                #self.reg_layer = mask*tf.reshape(self.x_noisy[:,:, 1:-1, :], [-1, self.config.stoi_correlation_time, output_dimension])
-                #self.reg_layer = mask*tf.reshape(self.x_noisy[:,:, 1:-1, :], [-1, self.config.stoi_correlation_time, output_dimension])
       
         loss_reg_tmp = 0.
+        SHR_tmp = 0.
+        NHR_tmp = 0.
         count = 0
         audio_len = len( data_list )
         learning_rate = learning_rate
@@ -143,7 +146,7 @@ class REG:
             noise_batch = next(get_noise_batch)
             pool = Pool(processes=self.config.thread_num)       
             func = partial( _gen_VAD_training_data_runtime, audio_batch, noise_batch,
-                            self.config, train)
+                            self.config, train, wandb.config.get("n_mels"))
             training_data = pool.map( func, range( 0, audio_batch_size ) )
             pool.close()
             pool.join()
@@ -166,8 +169,8 @@ class REG:
             #t0 = time.time()
             data_len = len( noisy_norm_data )
             data_batch = np_REG_batch(
-                noisy_norm_data, ground_truth, self.config.batch_size, data_len)
-            for batch in range( int( data_len / self.config.batch_size ) ):
+                noisy_norm_data, ground_truth, wandb.config.get("batch_size"), data_len)
+            for batch in range( int( data_len / wandb.config.get("batch_size") ) ):
                 noisy_norm_batch, ground_truth_batch= next(
                     data_batch ), next( data_batch )
         
@@ -188,29 +191,32 @@ class REG:
                     
                     step += 1
                     writer.add_summary( summary, step )
-                    wandb.log({"train mse loss": loss_reg})
-                    wandb.log({"train SHR": SHR})
-                    wandb.log({"train NHR": NHR})
+
                 else:
                     loss_reg, summary, SHR, NHR = sess.run(
                         [self.total_loss, merge_op, self.speech_hit_rate, self.noise_hit_rate
                          ], feed_dict=feed_dict )
-                    wandb.log({"dev mse loss": loss_reg})
-                    wandb.log({"dev SHR": SHR})
-                    wandb.log({"dev NHR": NHR})
+
                 
                 loss_reg_tmp += loss_reg
+                SHR_tmp += SHR
+                NHR_tmp += NHR
                 count += 1
-            #print('GPU processing time :' + str(time.time()-t0))
-        #print('count = ', count)
-        loss_reg_tmp /= count
-        if not train:
-            writer.add_summary( summary, step )
 
-        #if not self.config.boost:
+        loss_reg_tmp /= count
+        SHR_tmp /= count
+        NHR_tmp /= count
+        if not train:
+            wandb.log({"dev mse loss": loss_reg_tmp, "epoch":epoch})
+            wandb.log({"dev SHR": SHR_tmp, "epoch":epoch})
+            wandb.log({"dev NHR": NHR_tmp, "epoch":epoch})
+            writer.add_summary( summary, step )
+        else:
+            wandb.log({"train mse loss": loss_reg_tmp, "epoch":epoch})
+            wandb.log({"train SHR": SHR_tmp, "epoch":epoch})
+            wandb.log({"train NHR": NHR_tmp, "epoch":epoch})
+
         return loss_reg_tmp, summary, step
-        #else:
-        #    return loss_reg_tmp, summary, step, audio_loss
 
 
     def train(self, read_ckpt=None):
@@ -287,9 +293,6 @@ class REG:
             audio_len = len( data_list )
             noise_len = len( noise_list )
             snr_list = np.random.choice(snr, audio_len)
-            # with open('train_snr.csv', 'w') as f:
-            #     csv_writer = csv.writer(f)
-            #     csv_writer.writerows(snr_list)
 
             dev_snr = ['-4dB']
             dev_audio_len = len( dev_data_list )

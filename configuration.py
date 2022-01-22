@@ -82,7 +82,7 @@ train_arg.add_argument('--RNN', type=bool, default=False, help="RNN denoise mode
 ###   model setting
 train_arg.add_argument('--min_delta_loss', type=float, default=0.001, help="save model delta loss threshold")
 train_arg.add_argument('--init_learning_rate', type=float, default=0.001, help="initial learning rate")
-train_arg.add_argument('--epochs', type=int, default=1000, help="iteration times")
+train_arg.add_argument('--epochs', type=int, default=20, help="iteration times")
 train_arg.add_argument('--batch_size', type=int, default=64, help="iteration times")
 train_arg.add_argument('--audio_batch', type=int, default=128, help="a training batch size of audio")
 train_arg.add_argument('--is_training', type=bool, default=True, help="is training or not")

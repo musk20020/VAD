@@ -197,7 +197,7 @@ def audio_eq(audio_path, EQ, sr=16000, window=256, y=None):
     return eq_y
 
 def audio2spec(y, forward_backward=None, SEQUENCE=None, norm=True, hop_length=256, frame_num=None, mel_freq=False, angle=False,
-               under4k_dim=0, gender=None, threshold=False, featureMap=None):
+               under4k_dim=0, gender=None, threshold=False, featureMap=None, n_mels=48):
  
     NUM_FFT = np.int(hop_length*2)
 
@@ -218,7 +218,7 @@ def audio2spec(y, forward_backward=None, SEQUENCE=None, norm=True, hop_length=25
 
     if mel_freq:
         Sxx = librosa.feature.melspectrogram(S=Sxx, sr=16000, n_fft=NUM_FFT, hop_length=hop_length,
-                                           n_mels=48, fmax=8000, power=1)
+                                           n_mels=n_mels, fmax=8000, power=1)
         # print(Sxx.shape)
     if norm:
         # Sxx_mean = np.mean( Sxx, 1, keepdims=True)
@@ -756,7 +756,7 @@ def _gen_denoise_training_data_runtime_v2(clean_file_list, noise_file_list, conf
     ##########################      data return      ##############################
     return noisy_spec, clean_spec, noisy_spec_norm, clean_spec_norm
 
-def _gen_VAD_training_data_runtime(clean_file_list, noise_file_list, config, train=True, num=None):
+def _gen_VAD_training_data_runtime(clean_file_list, noise_file_list, config, train=True, n_mels=48, num=None):
     def wgn(x, maximum=0.1):
         noise = np.random.random_sample(len(x)) - 0.5
         return x + noise * maximum
@@ -795,7 +795,7 @@ def _gen_VAD_training_data_runtime(clean_file_list, noise_file_list, config, tra
     # noisy_spec = noisy_spec[:len(e)]
 
     noisy_spec_norm = audio2spec(y_noisy, forward_backward=False, SEQUENCE=False, norm=True,
-                            hop_length=config.hop_length, under4k_dim=config.under4k, mel_freq=True)
+                            hop_length=config.hop_length, under4k_dim=config.under4k, mel_freq=True, n_mels=n_mels)
 
     noisy_spec_norm = noisy_spec_norm[500:len(e)] # 500 for streaming normalize, 100 of 500 for VAD energy init
     e = (e>0)[500:]
