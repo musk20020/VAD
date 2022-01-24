@@ -38,13 +38,13 @@ def model_sweep():
     sweep_config={"method":"random"}
     param_dict = {
         "batch_size":{
-            "values":[64, 128, 256]
+            "values":[128]
         },
         "filter_h":{
-            "values":[3, 5, 7]
+            "values":[3]
         },
         "filter_w": {
-            "values": [1, 2, 3]
+            "values": [3]
         },
         "l1_output_num": {
             "values": [20, 40, 60]
@@ -56,16 +56,16 @@ def model_sweep():
             "values": [10, 30, 50]
         },
         "activate": {
-            "values": ["leaky_relu", "relu", "tanh", "selu"]
+            "values": ["leaky_relu", "relu"]
         },
         "n_mels": {
-            "values": [24, 48, 72]
+            "values": [48]
         },
     }
     sweep_config["parameters"] = param_dict
 
     sweep_id = wandb.sweep(sweep_config, project="VAD_sweep_2")
-    wandb.agent(sweep_id, main, count=30)
+    wandb.agent(sweep_id, main, count=5)
 
 if __name__ == '__main__':
     # main()
