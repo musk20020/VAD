@@ -49,16 +49,16 @@ class REG:
         wandb.init(project="VAD", entity="musktang")
         wandb.config = {
             "batch_size" : self.config.batch_size,
-            "filter_h" : 5,
-            "filter_w" : 3,
+            "filter_h" : 3,
+            "filter_w" : 2,
             "mel_freq_num" : self.config.mel_freq_num,
-            "l1_output_num" : 40,
-            "l2_output_num": 20,
-            "l3_output_num": 10,
+            "l1_output_num" : 20,
+            "l2_output_num": 10,
+            "l3_output_num": 30,
         }
 
         self.name = 'VAD'
-        input_dimension = 48  # RNN input
+        input_dimension = 24  # RNN input
         output_dimension = 1
 
         with tf.variable_scope(self.name) as vs:
@@ -89,7 +89,7 @@ class REG:
                                               activate=tf.nn.leaky_relu, padding='SAME', trainable=True)  # [N, 124, t-4, 128]
                 reshape = tf.reshape(tf.transpose(layer_3, perm=[0, 2, 3, 1]),
                                      [-1, self.config.stoi_correlation_time, wandb.config.get("l3_output_num") * input_dimension])
-                output = tfu._add_3dfc_layer(reshape, 10 * input_dimension, 1,
+                output = tfu._add_3dfc_layer(reshape, wandb.config.get("l3_output_num") * input_dimension, 1,
                                                '4', activate_function=tf.nn.sigmoid, trainable=True, keep_prob=1)
                 # softmax = tf.nn.softmax(layer_4, )
 

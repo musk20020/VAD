@@ -218,7 +218,7 @@ def audio2spec(y, forward_backward=None, SEQUENCE=None, norm=True, hop_length=25
 
     if mel_freq:
         Sxx = librosa.feature.melspectrogram(S=Sxx, sr=16000, n_fft=NUM_FFT, hop_length=hop_length,
-                                           n_mels=48, fmax=8000, power=1)
+                                           n_mels=24, fmax=8000, power=1)
         # print(Sxx.shape)
     if norm:
         # Sxx_mean = np.mean( Sxx, 1, keepdims=True)
