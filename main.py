@@ -44,7 +44,7 @@ def model_sweep():
             "values":[3]
         },
         "filter_w": {
-            "values": [3]
+            "values": [2]
         },
         "l1_output_num": {
             "values": [20, 40, 60]
@@ -59,7 +59,7 @@ def model_sweep():
             "values": ["leaky_relu", "relu"]
         },
         "n_mels": {
-            "values": [48]
+            "values": [24]
         },
     }
     sweep_config["parameters"] = param_dict
