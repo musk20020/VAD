@@ -72,7 +72,7 @@ class REG:
                 self.keep_prob = 0.7
             with tf.variable_scope('Outputs'):
                 self.ground_truth = tf.placeholder(
-                    tf.float32, shape=[None, self.config.stoi_correlation_time, 1], name='ground_truth')
+                    tf.float32, shape=[None, self.config.stoi_correlation_time, 2], name='ground_truth')
 
             with tf.variable_scope('featureExtractor', reuse=tf.AUTO_REUSE):
                 layer_1 = tfu._add_conv_layer(self.x_noisy_norm, layer_num='1', filter_h=wandb.config.get("filter_h"),
@@ -89,20 +89,30 @@ class REG:
                                               activate=tf.nn.leaky_relu, padding='SAME', trainable=True)  # [N, 124, t-4, 128]
                 reshape = tf.reshape(tf.transpose(layer_3, perm=[0, 2, 3, 1]),
                                      [-1, self.config.stoi_correlation_time, wandb.config.get("l3_output_num") * input_dimension])
-                output = tfu._add_3dfc_layer(reshape, wandb.config.get("l3_output_num") * input_dimension, 1,
+                output = tfu._add_3dfc_layer(reshape, wandb.config.get("l3_output_num") * input_dimension, 2,
                                                '4', activate_function=tf.nn.sigmoid, trainable=True, keep_prob=1)
                 # softmax = tf.nn.softmax(layer_4, )
 
+                # reshape_ground_truth = tf.reshape(self.ground_truth, [-1, 2])
+                # reshape_output = tf.reshape(output, [-1, 2])
+
             with tf.name_scope('reg_loss'):
-                self.loss_mse_denoiser = tf.losses.mean_squared_error(output, self.ground_truth)
-                predict_speech = tf.cast(output>0.5, tf.float32)
-                self.speech_hit_rate = tf.div(tf.reduce_sum(tf.multiply(predict_speech,self.ground_truth)),tf.reduce_sum(self.ground_truth))
-                self.noise_hit_rate = tf.div(tf.reduce_sum(tf.multiply(tf.subtract(1.0, predict_speech),tf.subtract(1.0, self.ground_truth)))
-                                             , tf.reduce_sum(tf.subtract(1.0, self.ground_truth)))
-                self.total_loss = self.loss_mse_denoiser
-                tf.summary.scalar('Loss mse', self.loss_mse_denoiser)
-                tf.summary.scalar('SHR', self.speech_hit_rate)
-                tf.summary.scalar('NHR', self.noise_hit_rate)
+                # self.loss_mse_denoiser = tf.losses.mean_squared_error(output, self.ground_truth)
+                self.loss_cross_entropy = tf.losses.softmax_cross_entropy(self.ground_truth, output)
+                predict_speech = tf.cast(output[:,:,0]>output[:,:,1], tf.float32)
+                # self.speech_hit_rate = tf.div(tf.reduce_sum(tf.multiply(predict_speech[:,:,1],self.ground_truth[:,:,1]))
+                #                               , tf.reduce_sum(self.ground_truth[:,:,1]))
+                # self.noise_hit_rate = tf.div(tf.reduce_sum(tf.multiply(predict_speech[:,:,0],self.ground_truth[:,:,0]))
+                #                               , tf.reduce_sum(self.ground_truth[:,:,0]))
+
+                self.speech_hit_rate = tf.div(tf.reduce_sum(tf.multiply(predict_speech, self.ground_truth[:,:,0]))
+                                              , tf.reduce_sum(self.ground_truth[:,:,0]))
+                self.noise_hit_rate = tf.div(tf.reduce_sum(tf.multiply(tf.subtract(1.0, predict_speech),self.ground_truth[:,:,1]))
+                                              , tf.reduce_sum(self.ground_truth[:,:,1]))
+                self.total_loss = self.loss_cross_entropy
+                tf.summary.scalar('Loss mse', self.loss_cross_entropy)
+                # tf.summary.scalar('SHR', self.speech_hit_rate)
+                # tf.summary.scalar('NHR', self.noise_hit_rate)
                 # wandb.log({"Loss mse": self.loss_mse_denoiser})
 
 

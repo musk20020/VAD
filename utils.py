@@ -799,7 +799,12 @@ def _gen_VAD_training_data_runtime(clean_file_list, noise_file_list, config, tra
 
     noisy_spec_norm = noisy_spec_norm[500:len(e)] # 500 for streaming normalize, 100 of 500 for VAD energy init
     e = (e>0)[500:]
-
+    label = np.zeros((len(e), 2))
+    for i in range(len(e)):
+        if e[i]:
+            label[i, 0] = 1
+        else:
+            label[i, 1] = 1
 
     ###  stoi shape  ###
     shift = random.randint(0, 10)
@@ -816,16 +821,16 @@ def _gen_VAD_training_data_runtime(clean_file_list, noise_file_list, config, tra
     noisy_spec_norm = noisy_spec_norm[shift:time_step[0] - residual]
     noisy_spec_norm = noisy_spec_norm.reshape([-1, config.stoi_correlation_time, time_step[1]])
 
-    e = e[shift:time_step[0] - residual]
-    e = e.reshape([-1, config.stoi_correlation_time])
+    label = label[shift:time_step[0] - residual]
+    label = label.reshape([-1, config.stoi_correlation_time, 2])
 
     # clean_spec_norm = clean_spec_norm[shift:time_step[0] - residual]
     # clean_spec_norm = clean_spec_norm.reshape([-1, config.stoi_correlation_time, clean_dim[1]])
 
     noisy_spec_norm = np.expand_dims(noisy_spec_norm.transpose([0, 2, 1]), axis=3)
-    e = np.expand_dims(e, axis=2)
+    # e = np.expand_dims(e, axis=2)
     # clean_spec_norm = np.expand_dims(clean_spec_norm.transpose([0, 2, 1]), axis=3)
 
     ##########################      data return      ##############################
-    return noisy_spec_norm, e
+    return noisy_spec_norm, label
 
