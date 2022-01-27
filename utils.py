@@ -246,7 +246,7 @@ def audio2spec(y, forward_backward=None, SEQUENCE=None, norm=True, hop_length=25
                 mean = 0.001*Sxx[:,i]+0.999*mean
                 var = np.sqrt(0.001*((Sxx[:,i]-mean)**2)+0.999*(var**2))
                 Sxx[:,i] = (Sxx[:,i]-mean)/var
-            return Sxx.T
+            return Sxx
 
     else:
         Sxx_r = np.array(Sxx)

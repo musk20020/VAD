@@ -17,10 +17,13 @@ import xlrd, xlwt
 
 tqdm.monitor_interval = 0
 #from utils_2 import np_REG_batch, search_wav, wav2spec, spec2wav, copy_file, np_batch, get_embedding, get_dist_table
-from utils import np_REG_batch, search_wav, copy_file, np_batch, get_embedding, get_dist_table, _gen_audio
+from utils import np_REG_batch, search_wav, copy_file, np_batch, \
+    get_embedding, get_dist_table, _gen_audio, audio2spec
 from sklearn.utils import shuffle
 import tensorflow_utils as tfu
-import wandb
+# import wandb
+import audio_processing as ap
+import librosa
 
 #eps = np.finfo(np.float32).epsilon()
 
@@ -38,16 +41,16 @@ class REG:
         self.tb_dir = '{}_{}/{}'.format( self.log_path, note, date )
         self.config = config
 
-        if not os.path.exists( self.saver_dir ):
-            os.makedirs( self.saver_dir )
-        if not os.path.exists( self.tb_dir ):
-            os.makedirs( self.tb_dir )
+        # if not os.path.exists( self.saver_dir ):
+        #     os.makedirs( self.saver_dir )
+        # if not os.path.exists( self.tb_dir ):
+        #     os.makedirs( self.tb_dir )
 
 
     def build(self, reuse):
 
-        wandb.init(project="VAD", entity="musktang")
-        wandb.config = {
+
+        config = {
             "batch_size" : self.config.batch_size,
             "filter_h" : 3,
             "filter_w" : 2,
@@ -66,61 +69,31 @@ class REG:
                 vs.reuse_variables()
             with tf.variable_scope('Intputs'):
                 self.x_noisy_norm = tf.placeholder(
-                    tf.float32, shape=[None, input_dimension, self.config.stoi_correlation_time, 1], name='x_norm')
+                    tf.float32, shape=[1, input_dimension, None, 1], name='x_norm')
 
                 self.lr = tf.placeholder(dtype=tf.float32)  # learning rate
                 self.keep_prob = 0.7
-            with tf.variable_scope('Outputs'):
-                self.ground_truth = tf.placeholder(
-                    tf.float32, shape=[None, self.config.stoi_correlation_time, 1], name='ground_truth')
+            # with tf.variable_scope('Outputs'):
+            #     self.ground_truth = tf.placeholder(
+            #         tf.float32, shape=[None, self.config.stoi_correlation_time, 1], name='ground_truth')
 
             with tf.variable_scope('featureExtractor', reuse=tf.AUTO_REUSE):
-                layer_1 = tfu._add_conv_layer(self.x_noisy_norm, layer_num='1', filter_h=wandb.config.get("filter_h"),
-                                              filter_w=wandb.config.get("filter_w"), input_c=1,
-                                               output_c=wandb.config.get("l1_output_num"), dilation=[1, 1, 1, 1],
+                layer_1 = tfu._add_conv_layer(self.x_noisy_norm, layer_num='1', filter_h=config["filter_h"],
+                                              filter_w=config["filter_w"], input_c=1,
+                                               output_c=config["l1_output_num"], dilation=[1, 1, 1, 1],
                                               activate=tf.nn.leaky_relu, padding='SAME', trainable=True)  # [N, 126, t-2, 512]
-                layer_2 = tfu._add_conv_layer(layer_1, layer_num='2', filter_h=wandb.config.get("filter_h"),
-                                              filter_w=wandb.config.get("filter_w"), input_c=wandb.config.get("l1_output_num"),
-                                              output_c=wandb.config.get("l2_output_num"), dilation=[1, 1, 1, 1],
+                layer_2 = tfu._add_conv_layer(layer_1, layer_num='2', filter_h=config["filter_h"],
+                                              filter_w=config["filter_w"], input_c=config["l1_output_num"],
+                                              output_c=config["l2_output_num"], dilation=[1, 1, 1, 1],
                                               activate=tf.nn.leaky_relu, padding='SAME', trainable=True)  # [N, 62, t-4, 512]
-                layer_3 = tfu._add_conv_layer(layer_2, layer_num='3', filter_h=wandb.config.get("filter_h"),
-                                              filter_w=1, input_c=wandb.config.get("l2_output_num"),
-                                              output_c=wandb.config.get("l3_output_num"), dilation=[1, 1, 1, 1],
+                layer_3 = tfu._add_conv_layer(layer_2, layer_num='3', filter_h=config["filter_h"],
+                                              filter_w=1, input_c=config["l2_output_num"],
+                                              output_c=config["l3_output_num"], dilation=[1, 1, 1, 1],
                                               activate=tf.nn.leaky_relu, padding='SAME', trainable=True)  # [N, 124, t-4, 128]
                 reshape = tf.reshape(tf.transpose(layer_3, perm=[0, 2, 3, 1]),
-                                     [-1, self.config.stoi_correlation_time, wandb.config.get("l3_output_num") * input_dimension])
-                output = tfu._add_3dfc_layer(reshape, wandb.config.get("l3_output_num") * input_dimension, 1,
+                                     [1, -1, config["l3_output_num"] * input_dimension])
+                self.output = tfu._add_3dfc_layer(reshape, config["l3_output_num"] * input_dimension, 1,
                                                '4', activate_function=tf.nn.sigmoid, trainable=True, keep_prob=1)
-                # softmax = tf.nn.softmax(layer_4, )
-
-            with tf.name_scope('reg_loss'):
-                self.loss_mse_denoiser = tf.losses.mean_squared_error(output, self.ground_truth)
-                predict_speech = tf.cast(output>0.5, tf.float32)
-                self.speech_hit_rate = tf.div(tf.reduce_sum(tf.multiply(predict_speech,self.ground_truth)),tf.reduce_sum(self.ground_truth))
-                self.noise_hit_rate = tf.div(tf.reduce_sum(tf.multiply(tf.subtract(1.0, predict_speech),tf.subtract(1.0, self.ground_truth)))
-                                             , tf.reduce_sum(tf.subtract(1.0, self.ground_truth)))
-                self.total_loss = self.loss_mse_denoiser
-                tf.summary.scalar('Loss mse', self.loss_mse_denoiser)
-                tf.summary.scalar('SHR', self.speech_hit_rate)
-                tf.summary.scalar('NHR', self.noise_hit_rate)
-                # wandb.log({"Loss mse": self.loss_mse_denoiser})
-
-
-            with tf.name_scope("exp_learning_rate"):
-                self.global_step = tf.Variable(0, trainable=False)
-
-            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-            with tf.control_dependencies(update_ops):
-                optimizer = tf.train.AdamOptimizer(self.lr)
-                gradients_1, v_1 = zip(*optimizer.compute_gradients(self.total_loss))
-                self.optimizer_1 = optimizer.apply_gradients(zip(gradients_1, v_1),
-                                                             global_step=self.global_step)
-            var_list = tf.all_variables()
-
-            # self.saver_pre1 = tf.train.Saver(
-            #     var_list=[v for v in var_list if 'modual1' in v.name or 'featureExtractor' in v.name])
-            # self.saver_pre2 = tf.train.Saver(
-            #     var_list=[v for v in var_list if 'modual2' in v.name in v.name])
             self.saver = tf.train.Saver()
 
     def _training_process(self, sess, epoch, data_list, noise_list, snr_list, merge_op, step, writer, learning_rate, train=True):
@@ -265,7 +238,7 @@ class REG:
 
             # wandb.tensorflow.log(tf.summary.merge_all())
             # self.saver.restore(sess=sess, save_path=test_saver)
-            
+
             ####################    Musk    ###################################
 
             if read_ckpt is not None:
@@ -296,7 +269,7 @@ class REG:
             dev_snr_list = np.random.choice( dev_snr, dev_audio_len )
 
             ###################################################################
-            
+
             for epoch in tqdm( epochs ):
 
                 if epoch % self.config.shuffle_data_time == 0 :
@@ -305,7 +278,7 @@ class REG:
                     snr_list = np.random.choice(snr, audio_len)
 
                 loss_reg, summary, step = self._training_process(sess, epoch, data_list,
-                                                                 noise_list_tmp, snr_list, 
+                                                                 noise_list_tmp, snr_list,
                                                                  merge_op, step, writer, learning_rate, train=True)
 
                 loss_dev, summary_dev, _ = self._training_process(sess, epoch, dev_data_list,
@@ -342,3 +315,38 @@ class REG:
                         learning_rate *= 10
                     patience = 4
                     print( 'Learning Rate Decrease ! ! ! : {}'.format(learning_rate) )
+
+    def init(self, read_ckpt):
+        sess = tf.Session()
+        model_path = "/Users/musk/pycharm_project/VAD/model/" + read_ckpt + "/"
+        ckpt = tf.train.get_checkpoint_state(model_path)
+        print("Model path : " + ckpt.model_checkpoint_path)
+        self.saver.restore(sess, ckpt.model_checkpoint_path)
+        return sess
+
+    def predict(self, sess, audio_file):
+
+        y, _ = librosa.load(audio_file, sr=16000, mono=True)
+        y = ap.second_order_filter_freq(y)
+        y /= np.max(np.abs(y))
+
+        magnitue_norm = audio2spec(y, forward_backward=False, SEQUENCE=False, norm=True,
+                            hop_length=128, under4k_dim=False, mel_freq=True)
+        noisy_mag_norm = np.expand_dims(np.expand_dims(magnitue_norm, 0), 3)
+        output = sess.run(self.output,
+                          feed_dict={self.x_noisy_norm: noisy_mag_norm})
+
+        return output
+
+    def batch_denoise(self, sess, src, dst, t=100):
+        if not os.path.exists("/".join(dst.split("/")[:-2])):
+            os.mkdir("/".join(dst.split("/")[:-2]))
+        if not os.path.exists(dst):
+            os.mkdir(dst)
+
+        audio_file = [tag for tag in iglob(src + '/*')]
+
+        for noisy_file in tqdm(audio_file):
+            file_name = noisy_file.split('/')[-1]
+            enhance_file = dst + file_name
+            self.denoise(sess, noisy_file, enhance_file, t)
