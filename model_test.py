@@ -89,8 +89,8 @@ def batch_test(model, sess, T=0.5):
     return f1_avg, TP_avg, FP_avg
 
 if __name__=='__main__':
-    model, sess = build_model(model_saver="220124")
-    file = open("f1_score.txt", "w")
+    model, sess = build_model(model_saver="220126")
+    file = open("f1_score_220126.txt", "w")
     for t in range(100):
         f1, TP, FP = batch_test(model, sess, t/100)
         file.write("{},{},{},{}\n".format(t/100, f1, TP, FP))
