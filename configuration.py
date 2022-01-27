@@ -23,7 +23,7 @@ train_arg = parser.add_argument_group('Data')
 
 ###   machine setting
 train_arg.add_argument('--note', type=str, default='VAD', help="describe your model")
-train_arg.add_argument('--date', type=str, default='220124', help="training model date")
+train_arg.add_argument('--date', type=str, default='220126', help="training model date")
 train_arg.add_argument('--gpu_index', type=str, default="0", help="training model date")
 train_arg.add_argument('--thread_num', type=int, default=8, help="parallel processing number")
 # train_arg.add_argument('--read_ckpt', type=str, default='saver_moduleModel/211230-humanVoice', help="read ckpt file path(/ read_ckpt /)")

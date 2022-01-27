@@ -236,7 +236,7 @@ def second_order_filter_freq(y):
     return filter_y
 
 def cal_frame_loudness(y, window, hop_length):
-    t = 100  # 4800(ms)/16
+    t = 300  # 4800(ms)/16
     e = np.zeros([t])
     e_gate = np.zeros([t])
     n = (len(y) - window) // hop_length
