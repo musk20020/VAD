@@ -23,8 +23,8 @@ train_arg = parser.add_argument_group('Data')
 
 ###   machine setting
 train_arg.add_argument('--note', type=str, default='VAD', help="describe your model")
-train_arg.add_argument('--date', type=str, default='220126', help="training model date")
-train_arg.add_argument('--gpu_index', type=str, default="0", help="training model date")
+train_arg.add_argument('--date', type=str, default='220128', help="training model date")
+train_arg.add_argument('--gpu_index', type=str, default="1", help="training model date")
 train_arg.add_argument('--thread_num', type=int, default=8, help="parallel processing number")
 # train_arg.add_argument('--read_ckpt', type=str, default='saver_moduleModel/211230-humanVoice', help="read ckpt file path(/ read_ckpt /)")
 train_arg.add_argument('--read_ckpt', type=str, default=None, help="read ckpt file path(/ read_ckpt /)")
@@ -43,9 +43,9 @@ train_arg.add_argument('--dev_noise_path', type=str, default='/AudioProject/data
 ###   data format setting
 train_arg.add_argument('--shuffle_data_time', type=int, default=3, help="shuffle training data each time")
 train_arg.add_argument('--progressive', type=bool, default=False, help="progressive training model")
-train_arg.add_argument('--mel_freq_num', type=int, default=24, help="input as log-mel frequency")
+train_arg.add_argument('--mel_freq_num', type=int, default=100, help="input as log-mel frequency")
 train_arg.add_argument('--input_frame_num', type=int, default=2, help="enhance a frame with N frame input(one side)")
-train_arg.add_argument('--hop_length', type=int, default=128, help="frame shift")
+train_arg.add_argument('--hop_length', type=int, default=200, help="frame shift")
 train_arg.add_argument('--clean_sr', type=int, default=16000, help="clean voice sample rate")
 train_arg.add_argument('--noise_sr', type=int, default=16000, help="noise sample rate")
 train_arg.add_argument('--embedding_file', type=str, default='TCC300_CRNN_DVec', help="embedding file need to read")

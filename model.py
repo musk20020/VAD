@@ -47,14 +47,23 @@ class REG:
     def build(self, reuse):
 
         wandb.init(project="VAD", entity="musktang")
+        # wandb.config = {
+        #     "batch_size" : self.config.batch_size,
+        #     "filter_h" : 3,
+        #     "filter_w" : 2,
+        #     "mel_freq_num" : self.config.mel_freq_num,
+        #     "l1_output_num" : 20,
+        #     "l2_output_num": 10,
+        #     "l3_output_num": 30,
+        # }
         wandb.config = {
-            "batch_size" : self.config.batch_size,
-            "filter_h" : 3,
-            "filter_w" : 2,
-            "mel_freq_num" : self.config.mel_freq_num,
-            "l1_output_num" : 20,
-            "l2_output_num": 10,
-            "l3_output_num": 30,
+            "batch_size": self.config.batch_size,
+            "filter_h": 5,
+            "filter_w": 5,
+            "mel_freq_num": self.config.mel_freq_num,
+            "l1_output_num": 40,
+            "l2_output_num": 20,
+            "l3_output_num": 10,
         }
 
         self.name = 'VAD'
