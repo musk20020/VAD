@@ -5,7 +5,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import csv
 
-file = open("f1_score_220124.txt", "r").readlines()
+file = open("f1_score_220126.txt", "r").readlines()
 
 T = np.zeros([len(file)])
 f1 = np.zeros([len(file)])
