@@ -236,10 +236,14 @@ def audio2spec(y, forward_backward=None, SEQUENCE=None, norm=True, hop_length=25
             Sxxf = abs(Df)
 
             for i in range(Sxx.shape[1]):
-                mean = 0.001*Sxx[:,i]+0.999*mean
-                var = np.sqrt(0.001*((Sxx[:,i]-mean)**2)+0.999*(var**2))
-                Sxx[:,i] = (Sxx[:,i]-mean)/var
-                Sxxf[:,i] = (Sxxf[:,i]-mean)/var
+                if i == 0:
+                    mean = Sxx[:,i]
+                    var = np.sqrt((Sxx[:,i]-mean)**2)
+                else:
+                    mean = 0.001*Sxx[:,i]+0.999*mean
+                    var = np.sqrt(0.001*((Sxx[:,i]-mean)**2)+0.999*(var**2))
+                    Sxx[:,i] = (Sxx[:,i]-mean)/var
+                    Sxxf[:,i] = (Sxxf[:,i]-mean)/var
             return Sxx.T, Sxxf.T
         else:
             for i in range(Sxx.shape[1]):
